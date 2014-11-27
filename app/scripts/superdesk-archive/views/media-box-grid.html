@@ -43,9 +43,8 @@
 </div>
 
 <div class="status-label" ng-show="item._type">{{ item._type }}</div>
-
 <div class="action">
-    <ul ng-if="extras.activity" class="item-functions"
+    <ul ng-if="extras.activity && !simple" class="item-functions"
         sd-activity-list
         data-item="item"
         data-type="{{extras.activity.type || item._type}}"
