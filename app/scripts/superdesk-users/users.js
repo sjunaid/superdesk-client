@@ -151,6 +151,13 @@
 
         };
 
+        /**
+         * Clear user cache
+         */
+        userservice.clearCache = function() {
+        	cache.removeAll();
+        };
+
         function buildKey(key, page, perPage) {
             return key + '_' + page + '_' + perPage;
         }
@@ -325,6 +332,7 @@
      */
     UserDeleteCommand.$inject = ['api', 'data', '$q', 'notify', 'gettext'];
     function UserDeleteCommand(api, data, $q, notify, gettext) {
+    	data = data.item;
         return api.users.remove(data.item).then(function(response) {
             data.list.splice(data.index, 1);
         }, function(response) {
@@ -633,8 +641,8 @@
             return {
                 link: function (scope, element) {
                     element.addClass('item');
-                    element.find('input').addClass('info-value');
-                    element.find('input').addClass('info-editable');
+                    element.find('input, select')
+                        .addClass('info-value info-editable');
                 }
             };
         })
@@ -672,8 +680,9 @@
             };
         }])
 
-        .directive('sdUserEdit', ['gettext', 'notify', 'users', 'session', '$location', '$route', 'superdesk', 'features', 'asset',
-        function(gettext, notify, users, session, $location, $route, superdesk, features, asset) {
+        .directive('sdUserEdit', ['api', 'gettext', 'notify', 'users', 'userList', 'session', '$location',
+                                  '$route', 'superdesk', 'features', 'asset',
+        function(api, gettext, notify, users, userList, session, $location, $route, superdesk, features, asset) {
 
             return {
                 templateUrl: asset.templateUrl('superdesk-users/views/edit-form.html'),
@@ -700,6 +709,10 @@
                         scope.dirty = !angular.equals(user, scope.origUser);
                     });
 
+                    api('roles').query().then(function(result) {
+                        scope.roles = result._items;
+                    });
+
                     scope.cancel = function() {
                         resetUser(scope.origUser);
                         if (!scope.origUser.Id) {
@@ -716,6 +729,7 @@
                     scope.save = function() {
                         scope.error = null;
                         notify.info(gettext('saving..'));
+
                         return users.save(scope.origUser, scope.user)
                         .then(function(response) {
                             scope.origUser = response;
@@ -727,6 +741,8 @@
                             if (scope.user._id === session.identity._id) {
                                 session.updateIdentity(scope.origUser);
                             }
+
+                            userList.clearCache();
 
                         }, function(response) {
                             notify.pop();
@@ -949,9 +965,6 @@
                     scope.select = function(user) {
                         scope.selected = user;
                     };
-
-                    scope.$watch('users', function(users) {
-                    });
 
                     function getSelectedIndex() {
                         return _.findIndex(scope.users, scope.selected);

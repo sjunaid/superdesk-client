@@ -15,15 +15,15 @@ define([
 
         $injector.invoke(BaseListController, this, {$scope: $scope});
 
-        $scope.createdMedia = {
-            items: []
-        };
-
         $scope.currentModule = 'archive';
         $scope.views = new ViewsCtrl($scope);
         $scope.stages = new StagesCtrl($scope);
         $scope.content = new ContentCtrl($scope);
         $scope.type = 'archive';
+        $scope.repo = {
+            ingest: false,
+            archive: true
+        };
         $scope.loading = false;
         $scope.spike = !!$location.search().spike;
 
@@ -33,11 +33,15 @@ define([
             $location.search('_id', null);
         };
 
+        $scope.stageSelect = function(stage) {
+            if ($scope.spike) {
+                $scope.toggleSpike();
+            }
+            $scope.stages.select(stage);
+        };
+
         $scope.openUpload = function openUpload() {
-            superdesk.intent('upload', 'media').then(function(items) {
-                // todo: put somewhere else
-                $scope.createdMedia.items.unshift.apply($scope.createdMedia.items, items);
-            });
+            superdesk.intent('upload', 'media');
         };
 
         this.fetchItems = function fetchItems(criteria) {
@@ -48,9 +52,6 @@ define([
             resource.query(criteria).then(function(items) {
                 $scope.loading = false;
                 $scope.items = items;
-                $scope.createdMedia = {
-                    items: []
-                };
             }, function() {
                 $scope.loading = false;
             });

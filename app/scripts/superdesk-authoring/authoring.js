@@ -95,27 +95,33 @@
         /**
          * Close an item
          *
+         *   and save it if dirty, unlock if editable, and remove from work queue at all times
+         *
          * @param {Object} item Destination.
          * @param {Object} diff Changes.
          * @param {boolean} isDirty $scope dirty status.
          */
         this.close = function closeAuthoring(item, diff, isDirty) {
-            if (isDirty && this.isEditable(item)) {
-                return confirm.confirm()
-                    .then(angular.bind(this, function save() {
-                        return this.save(item, diff);
-                    }), function() { // ignore saving
-                        return $q.when();
-                    })
-                    .then(function unlock() {
-                        return lock.unlock(item);
-                    })
-                    .then(function removeFromWorkqueue() {
-                        return workqueue.remove(item);
-                    });
+            var promise = $q.when();
+
+            if (this.isEditable(item)) {
+                if (isDirty) {
+                    promise = confirm.confirm()
+                        .then(angular.bind(this, function save() {
+                            return this.save(item, diff);
+                        }), function() { // ignore saving
+                            return $q.when();
+                        });
+                }
+
+                promise = promise.then(function unlock() {
+                    return lock.unlock(item);
+                });
             }
 
-            return $q.when(workqueue.remove(item));
+            return promise.then(function removeFromWorkqueue(res) {
+                return workqueue.remove(item);
+            });
         };
 
         /**
@@ -289,12 +295,23 @@
     ];
 
     function AuthoringController($scope, superdesk, workqueue, notify, gettext, desks, item, authoring, api) {
-        var stopWatch = angular.noop;
+        var stopWatch = angular.noop,
+            _closing;
 
         $scope.workqueue = workqueue.all();
         $scope.dirty = false;
         $scope.viewSendTo = false;
         $scope.stage = null;
+
+        // These values should come from preferences.
+        $scope.sluglineSoftLimit = 26;
+        $scope.sluglineHardLimit = 40;
+        $scope.headlineSoftLimit = 42;
+        $scope.headlineHardLimit = 70;
+        $scope.abstractSoftLimit = 160;
+        $scope.abstractHardLimit = 200;
+
+        $scope.charLimitHit = false;
 
         if (item.task && item.task.stage) {
             api('stages').getById(item.task.stage)
@@ -316,8 +333,23 @@
             stopWatch(); // stop watch if any
             stopWatch = $scope.$watchGroup([
                 'item.headline',
+                'item.abstract',
                 'item.slugline',
-                'item.body_html'
+                'item.body_html',
+                'item.abstract',
+                'item.anpa_take_key',
+                'item.unique_name',
+                'item.urgency',
+                'item.byline',
+                'item.priority',
+                'item.ednote',
+                'item.usageterms',
+                'item.subject',
+                'item.genre',
+                'item[\'anpa-category\']',
+                'item.dateline',
+                'item.located',
+                'item.place'
             ], function(changes) {
                 $scope.dirty = isDirty();
                 if ($scope.dirty && authoring.isEditable(item)) {
@@ -325,6 +357,20 @@
                 }
             });
         }
+
+        $scope.checkLimit = function() {
+            $scope.charLimitHit = false;
+            _.each({
+                'slugline': $scope.sluglineSoftLimit,
+                'headline': $scope.headlineSoftLimit,
+                'abstract': $scope.abstractSoftLimit
+            }, function(limit, field) {
+                if ($scope.item[field] && $scope.item[field].length > limit) {
+                    $scope.charLimitHit = true;
+                    return false;
+                }
+            });
+        };
 
         /**
          * Create a new version
@@ -338,7 +384,13 @@
                 startWatch();
                 return item;
     		}, function(response) {
-    			notify.error(gettext('Error. Item not updated.'));
+                if (angular.isDefined(response.data._issues) &&
+                    angular.isDefined(response.data._issues.unique_name) &&
+                    response.data._issues.unique_name.unique === 1) {
+                    notify.error(gettext('Error: Unique Name is not unique.'));
+                } else {
+                    notify.error(gettext('Error. Item not updated.'));
+                }
     		});
     	};
 
@@ -346,6 +398,8 @@
          * Close an item - unlock and remove from workqueue
          */
         $scope.close = function() {
+            stopWatch();
+            _closing = true;
             authoring.close(item, $scope.item, $scope.dirty).then(function() {
                 superdesk.intent('author', 'dashboard');
             });
@@ -384,7 +438,7 @@
         $scope.closePreview();
 
         $scope.$on('item:unlock', function(_e, data) {
-            if ($scope.item._id === data.item) {
+            if ($scope.item._id === data.item && !_closing) {
                 stopWatch();
                 authoring.unlock(item, data.user);
                 $scope._editable = false;
@@ -401,6 +455,145 @@
                 var newW = p.outerWidth() + elem.outerWidth() + marginW;
                 if (newW < maxW) {
                     p.outerWidth(newW);
+                }
+            }
+        };
+    }
+
+    var cleanHtml = function(data) {
+        return data.replace(/<\/?[^>]+>/gi, '').replace('&nbsp;', ' ');
+    };
+
+    CharacterCount.$inject = [];
+    function CharacterCount() {
+        return {
+            scope: {
+                item: '=',
+                limit: '=',
+                limitCallback: '=',
+                html: '@'
+            },
+            template: '<span class="char-count" ng-class="{error: limitHit}">{{numChars}} <span translate>characters</span></span>',
+            link: function characterCountLink(scope, elem, attrs) {
+                scope.html = scope.html || false;
+                scope.numChars = 0;
+                scope.limitHit = false;
+
+                scope.$watch('item', function() {
+                    var input = scope.item || '';
+                    input = scope.html ? cleanHtml(input) : input;
+
+                    scope.numChars = input.length || 0;
+                    if (scope.limit && (
+                        (scope.numChars > scope.limit && scope.limitHit === false) ||
+                        (scope.numChars <= scope.limit && scope.limitHit === true)
+                    )) {
+                        scope.limitHit = !scope.limitHit;
+                        if (typeof scope.limitCallback === 'function') {
+                            scope.limitCallback();
+                        }
+                    }
+                });
+            }
+        };
+    }
+
+    WordCount.$inject = [];
+    function WordCount() {
+        return {
+            scope: {
+                item: '=',
+                html: '@'
+            },
+            template: '<span class="char-count">{{numWords}} <span translate>words</span></span>',
+            link: function wordCountLink(scope, elem, attrs) {
+                scope.html = scope.html || false;
+                scope.numWords = 0;
+
+                scope.$watch('item', function() {
+                    var input = scope.item || '';
+                    input = scope.html ? cleanHtml(input) : input;
+
+                    scope.numWords = _.compact(input.split(/\s+/)).length || 0;
+                });
+            }
+        };
+    }
+
+    AuthoringThemesService.$inject = ['storage'];
+    function AuthoringThemesService(storage) {
+
+        var service = {};
+
+        var THEME_KEY = 'authoring:theme';
+        var THEME_DEFAULT = 'default-normal';
+
+        service.availableThemes = [
+            {
+                cssClass: '',
+                label: 'Default Theme normal',
+                key: 'default-normal'
+            },
+            {
+                cssClass: 'large-text',
+                label: 'Default Theme large',
+                key: 'default-large'
+            },
+            {
+                cssClass: 'dark-theme',
+                label: 'Dark Theme normal',
+                key: 'dark-normal'
+            },
+            {
+                cssClass: 'dark-theme large-text',
+                label: 'Dark Theme large',
+                key: 'dark-large'
+            },
+            {
+                cssClass: 'natural-theme',
+                label: 'Natural Theme normal',
+                key: 'natural-normal'
+            },
+            {
+                cssClass: 'natural-theme large-text',
+                label: 'Natural Theme large',
+                key: 'natural-large'
+            }
+        ];
+
+        service.defaultTheme = 'default-normal';
+
+        service.save = function(theme) {
+            storage.setItem(THEME_KEY, theme.key);
+        };
+
+        service.get = function() {
+            var _default = storage.getItem(THEME_KEY) || THEME_DEFAULT;
+            return _.find(service.availableThemes, {key: _default});
+        };
+
+        return service;
+    }
+
+    ThemeSelectDirective.$inject = ['authThemes'];
+    function ThemeSelectDirective(authThemes) {
+
+        return {
+            templateUrl: 'scripts/superdesk-authoring/views/theme-select.html',
+            link: function themeSelectLink(scope, elem) {
+
+                scope.themes = authThemes.availableThemes;
+                scope.theme = authThemes.get();
+                applyTheme();
+
+                scope.changeTheme = function(theme) {
+                    scope.theme = theme;
+                    authThemes.save(theme);
+                    applyTheme();
+                };
+
+                function applyTheme() {
+                    elem.closest('#theme-container').attr('class', scope.theme.cssClass);
                 }
             }
         };
@@ -503,9 +696,13 @@
         .service('autosave', AutosaveService)
         .service('confirm', ConfirmDirtyService)
         .service('lock', LockService)
+        .service('authThemes', AuthoringThemesService)
 
         .directive('sdDashboardCard', DashboardCard)
         .directive('sdSendItem', SendItem)
+        .directive('sdCharacterCount', CharacterCount)
+        .directive('sdWordCount', WordCount)
+        .directive('sdThemeSelect', ThemeSelectDirective)
 
         .config(['superdeskProvider', function(superdesk) {
             superdesk
@@ -530,7 +727,7 @@
                         superdesk.intent('author', 'article', data.item);
 	                }],
 	            	filters: [
-	                    {action: superdesk.ACTION_EDIT, type: 'archive'}
+	                    {action: 'list', type: 'archive'}
 	                ]
 	            });
         }]);
