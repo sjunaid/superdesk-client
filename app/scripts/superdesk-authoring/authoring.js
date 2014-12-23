@@ -332,10 +332,12 @@
         'desks',
         'item',
         'authoring',
-        'api'
+        'api',
+        '$location',
+        'referrer'
     ];
 
-    function AuthoringController($scope, superdesk, workqueue, notify, gettext, desks, item, authoring, api) {
+    function AuthoringController($scope, superdesk, workqueue, notify, gettext, desks, item, authoring, api, $location, referrer) {
         var stopWatch = angular.noop,
             _closing;
 
@@ -353,6 +355,7 @@
         $scope.abstractHardLimit = 200;
 
         $scope.charLimitHit = false;
+        $scope.referrerUrl = referrer.getReferrerUrl();
 
         if (item.task && item.task.stage) {
             api('stages').getById(item.task.stage)
@@ -425,6 +428,11 @@
                 $scope.item = _.create(item);
                 notify.success(gettext('Item updated.'));
                 startWatch();
+                if (typeof ($scope.referrerUrl) === 'undefined' || $scope.referrerUrl === null){
+                    superdesk.intent('author', 'dashboard');
+                } else {
+                    $location.url($scope.referrerUrl);
+                }
                 return item;
     		}, function(response) {
                 if (angular.isDefined(response.data._issues) &&
@@ -444,7 +452,11 @@
             stopWatch();
             _closing = true;
             authoring.close(item, $scope.item, $scope.dirty).then(function() {
-                superdesk.intent('author', 'dashboard');
+                if (typeof ($scope.referrerUrl) === 'undefined' || $scope.referrerUrl === null) {
+                    superdesk.intent('author', 'dashboard');
+                } else {
+                    $location.url($scope.referrerUrl);
+                }
             });
         };
 
@@ -712,13 +724,19 @@
                     scope.beforeSend()
                     .then(function(result) {
 		    			scope.task._etag = result._etag;
-                        api.save('tasks', scope.task, data).then(gotoDashboard);
+                        api.save('tasks', scope.task, data).then(gotoPreviousScreen);
                     });
                 }
 
                 function gotoDashboard() {
-                    notify.success(gettext('Item sent.'));
                     superdesk.intent('author', 'dashboard');
+                }
+
+                function gotoPreviousScreen($scope) {
+                    notify.success(gettext('Item sent.'));
+                    if (typeof (scope.$parent.referrerUrl) === 'undefined' || scope.$parent.referrerUrl === null) {
+                        gotoDashboard();
+                    }
                 }
             }
         };
@@ -773,7 +791,7 @@
 	            	label: gettext('Edit item'),
 	            	icon: 'pencil',
 	            	controller: ['data', '$location', 'workqueue', 'superdesk', function(data, $location, workqueue, superdesk) {
-	            		workqueue.add(data.item);
+                        workqueue.add(data.item);
                         superdesk.intent('author', 'article', data.item);
 	                }],
 	            	filters: [

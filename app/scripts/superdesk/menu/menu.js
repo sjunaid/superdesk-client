@@ -19,8 +19,8 @@
             };
         }])
 
-        .directive('sdMenuWrapper', ['$route', 'superdesk', 'betaService', 'userNotifications', 'asset',
-        function($route, superdesk, betaService, userNotifications, asset) {
+        .directive('sdMenuWrapper', ['$route', 'superdesk', 'betaService', 'userNotifications', 'asset', '$location', 'referrer',
+            function($route, superdesk, betaService, userNotifications, asset, $location, referrer) {
             return {
                 require: '^sdSuperdeskView',
                 templateUrl: asset.templateUrl('superdesk/menu/views/menu.html'),
@@ -53,6 +53,16 @@
 
                     scope.toggleNotifications = function() {
                         ctrl.flags.notifications = !ctrl.flags.notifications;
+                    };
+
+                    scope.setReferrer = function() {
+                        if ($route.current.href === 'authoring') {
+                            if ($route.current.href === $location.url()) {
+                                referrer.setReferrerUrl($location.url());
+                            }
+                        } else {
+                                referrer.setReferrerUrl($location.url());
+                        }
                     };
 
                     scope.toggleBeta = function() {
