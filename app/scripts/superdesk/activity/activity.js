@@ -111,7 +111,9 @@ define([
         };
 
         this.$get = ['$q', '$route', '$rootScope', 'activityService', 'activityChooser', 'betaService', 'features', 'privileges',
-        function superdeskFactory($q, $route, $rootScope, activityService, activityChooser, betaService, features, privileges) {
+        '$location', 'referrer',
+        function superdeskFactory($q, $route, $rootScope, activityService, activityChooser, betaService, features, privileges,
+            $location, referrer) {
 
             /**
              * Render main menu depending on registered acitivites
@@ -172,6 +174,9 @@ define([
                  * Resolve an intent to a single activity
                  */
                 resolve: function(intent) {
+                    // Set referrer url while opening an activity
+                    referrer.setReferrerUrl($location.url());
+
                     var activities = this.findActivities(intent);
                     switch (activities.length) {
                         case 0:
@@ -355,6 +360,19 @@ define([
         };
     }]);
 
+    /**
+     * set/get the referrer Url
+     */
+    module.service('referrer', function() {
+         var refererURL;
+         this.setReferrerUrl = function(refURL) {
+            refererURL = refURL;
+         };
+
+         this.getReferrerUrl = function() {
+            return refererURL;
+         };
+    });
     // reject modal on route change
     // todo(petr): what about blocking route change as long as it is opened?
     module.run(['$rootScope', 'activityService', function($rootScope, activityService) {
