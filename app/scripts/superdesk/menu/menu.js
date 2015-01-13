@@ -55,16 +55,6 @@
                         ctrl.flags.notifications = !ctrl.flags.notifications;
                     };
 
-                    scope.setReferrer = function() {
-                        if ($route.current.href === 'authoring') {
-                            if ($route.current.href === $location.url()) {
-                                referrer.setReferrerUrl($location.url());
-                            }
-                        } else {
-                                referrer.setReferrerUrl($location.url());
-                        }
-                    };
-
                     scope.toggleBeta = function() {
                         betaService.toggleBeta();
                     };

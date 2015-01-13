@@ -429,7 +429,7 @@
                 notify.success(gettext('Item updated.'));
                 startWatch();
                 if (typeof ($scope.referrerUrl) === 'undefined' || $scope.referrerUrl === null){
-                    superdesk.intent('author', 'dashboard');
+                    $location.url(localStorage.getItem('argUrl'));
                 } else {
                     $location.url($scope.referrerUrl);
                 }
@@ -453,7 +453,7 @@
             _closing = true;
             authoring.close(item, $scope.item, $scope.dirty).then(function() {
                 if (typeof ($scope.referrerUrl) === 'undefined' || $scope.referrerUrl === null) {
-                    superdesk.intent('author', 'dashboard');
+                    $location.url(localStorage.getItem('argUrl'));
                 } else {
                     $location.url($scope.referrerUrl);
                 }
